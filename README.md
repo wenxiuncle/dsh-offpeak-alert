@@ -1,8 +1,16 @@
-# DeepSeek 峰谷时段角标（DSH 插件）
+# DeepSeek 峰谷时段角标（DeepSeek Harness 桌面版插件）
 
 [English](#english) · 简体中文
 
-在 DeepSeek Harness 窗口**标题栏居中**常驻一个小角标（可拖动到任意位置），显示当前是否处于 DeepSeek API 的**错峰（低谷）优惠时段**、以及距下一次切换的倒计时。
+> **本插件适配 DeepSeek Harness 桌面版。** 角标默认贴在**视口顶边居中**（`top: 4px`，见 `applyDefaultPosition()`），在桌面版里这个落点正好是应用自绘的窗口标题栏 —— 也就是下图实拍的位置。Host 侧没有桌面专有依赖，但落位是按桌面版窗口设计的：浏览器版（DSH Web）没有这条标题栏，角标会贴到页面本身的最顶端，**未做适配与验证**。
+
+在 DeepSeek Harness **桌面版**窗口的**标题栏居中**常驻一个小角标（可拖动到任意位置），显示当前是否处于 DeepSeek API 的**错峰（低谷）优惠时段**、以及距下一次切换的倒计时。
+
+![DeepSeek Harness 桌面版窗口标题栏中的峰谷角标](assets/screenshot-titlebar.png)
+
+<sub>角标位于窗口标题栏正中（低谷期实拍）。放大看：</sub>
+
+![角标细节：低谷期 0.5× · 国庆节 · 转高峰 153 小时 7 分钟后 ×](assets/screenshot-badge.png)
 
 - **高峰**：角标切成**深红底 + 近白文字**
 - **低谷**：低调中性底色，安静提示
@@ -47,7 +55,7 @@
 ## 安装
 
 1. 把本仓库克隆或下载到本地任意目录
-2. 打开 DSH 的**插件面板**（侧边栏 Plugins）
+2. 打开 **DeepSeek Harness 桌面版**，进入**插件面板**（侧边栏 Plugins）
 3. 点「**添加插件**」
 4. 在「包名或地址」里填入本目录的绝对路径，例如：
 
@@ -137,6 +145,7 @@ __dshOffpeak.showBadge()   // 恢复被 × 关掉的角标
 
 ## 已知边界
 
+- **面向 DeepSeek Harness 桌面版**：默认落位是「视口顶边居中」，依赖桌面版把窗口标题栏画在文档内。浏览器版（DSH Web）没有这条标题栏，角标会落在页面顶端，未做适配与验证。
 - 只影响主窗口文档；终端、文档预览等独立 iframe 内不显示角标。
 - 角标 `position: fixed` 脱离文档流，不占位、不挤压宿主布局；文案单行不换行，只有极窄窗口才会以省略号收尾。
 - 不改主题、不改背景、不写 `localStorage`（位置与关闭状态分别记 `localStorage`/`sessionStorage`）、不注册全局事件，卸载即彻底还原。
@@ -156,7 +165,9 @@ __dshOffpeak.showBadge()   // 恢复被 × 关掉的角标
 <a id="english"></a>
 ## English
 
-A badge for [DeepSeek Harness](https://deepseek-harness.github.io/deepseek-harness/en/guide/quickstart) that shows whether the DeepSeek API is currently in its **off-peak (discounted) window**, plus a countdown to the next switch.
+A badge for the **DeepSeek Harness desktop app** ([quick start](https://deepseek-harness.github.io/deepseek-harness/en/guide/quickstart)): it sits in the window title bar (see the screenshot at the top) and shows whether the DeepSeek API is currently in its **off-peak (discounted) window**, plus a countdown to the next switch.
+
+**Desktop app only.** The badge's default spot is the top-centre of the viewport, which is where the desktop app draws its window title bar. The browser build (DSH Web) has no such title bar, so the badge would land at the very top of the page — neither supported nor tested there. The Host side has no desktop-specific dependency.
 
 - **Peak** → the badge turns deep red. **Off-peak** → a quiet neutral badge.
 - Sits centered in the title bar and can be **dragged anywhere** (position is remembered).

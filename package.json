@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "main": "index.js",
-  "description": "DSH 插件：DeepSeek API 峰谷时段角标，显示当前是高峰还是错峰低谷及倒计时；高峰时转为深红配色，不改动界面背景。",
+  "description": "DeepSeek Harness 桌面版插件：DeepSeek API 峰谷时段角标，显示当前是高峰还是错峰低谷及倒计时；高峰时转为深红配色，不改动界面背景。",
   "keywords": [
     "deepseek",
     "deepseek-harness",
@@ -35,12 +35,13 @@
     "client.js",
     "cordis.patch.yml",
     "icon.svg",
+    "assets",
     "README.md",
     "LICENSE"
   ],
   "meta": {
     "title": "峰谷时段角标",
-    "description": "在窗口标题栏显示 DeepSeek API 当前是高峰（1×）还是错峰低谷（0.5×），并给出距下一次切换的倒计时；高峰时角标变为深红配色，可自由拖动。不修改界面背景与主题。"
+    "description": "适用于 DeepSeek Harness 桌面版：在窗口标题栏显示 DeepSeek API 当前是高峰（1×）还是错峰低谷（0.5×），并给出距下一次切换的倒计时；高峰时角标变为深红配色，可自由拖动。不修改界面背景与主题。"
   },
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },
