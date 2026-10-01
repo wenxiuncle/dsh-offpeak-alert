@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: '@local/dsh-offpeak-alert',
+  id: 'dsh-offpeak-alert',
   factory() {
     /**
      * DeepSeek 峰谷时段角标 —— 客户端（浏览器）部分。
@@ -15,7 +15,7 @@ window.__ModuleLoader__.load({
      *   只会按 SCHEDULE_VERIFIED_ON 的时限提醒你核对。改法见 README「规则会过期吗」一节。
      */
 
-    const PLUGIN_ID = '@local/dsh-offpeak-alert';
+    const PLUGIN_ID = 'dsh-offpeak-alert';
 
     /** 最后一次人工核对官网规则的日期（YYYY-MM-DD）。每次核对后请更新。 */
     const SCHEDULE_VERIFIED_ON = '2026-10-01';

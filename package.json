@@ -1,8 +1,9 @@
 {
-  "name": "@local/dsh-offpeak-alert",
+  "name": "dsh-offpeak-alert",
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "index.js",
   "description": "DSH 插件：DeepSeek API 峰谷时段角标，显示当前是高峰还是错峰低谷及倒计时；高峰时转为深红配色，不改动界面背景。",
   "keywords": [
     "deepseek",
