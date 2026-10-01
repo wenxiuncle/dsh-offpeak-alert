@@ -1,0 +1,51 @@
+{
+  "name": "@local/dsh-offpeak-alert",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH 插件：DeepSeek API 峰谷时段角标，显示当前是高峰还是错峰低谷及倒计时；高峰时转为深红配色，不改动界面背景。",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "peak-hours",
+    "off-peak",
+    "pricing",
+    "badge"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wenxiuncle/dsh-offpeak-alert.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wenxiuncle/dsh-offpeak-alert/issues"
+  },
+  "homepage": "https://github.com/wenxiuncle/dsh-offpeak-alert#readme",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json"
+  },
+  "icon": "./icon.svg",
+  "files": [
+    "index.js",
+    "client.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "meta": {
+    "title": "峰谷时段角标",
+    "description": "在窗口标题栏显示 DeepSeek API 当前是高峰（1×）还是错峰低谷（0.5×），并给出距下一次切换的倒计时；高峰时角标变为深红配色，可自由拖动。不修改界面背景与主题。"
+  },
+  "dsh": {
+    "bundle": { "patch": "./cordis.patch.yml" },
+    "client": {
+      "platform": "web",
+      "immediately": true
+    }
+  }
+}

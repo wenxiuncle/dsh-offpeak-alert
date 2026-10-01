@@ -1,0 +1,3 @@
+- insert:
+    - id: offpeak-alert
+      name: '@local/dsh-offpeak-alert'

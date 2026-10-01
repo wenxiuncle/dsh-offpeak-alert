@@ -1,0 +1,12 @@
+# 统一以 LF 存入仓库，避免不同平台换行符差异（Windows 检出仍保持 LF，
+# 因为这里是 JS 源码，不依赖 CRLF）。
+* text=auto eol=lf
+
+# 二进制文件不做换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ico binary
