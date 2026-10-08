@@ -21,7 +21,7 @@ DeepSeek Harness **桌面版**插件：在应用窗口标题栏常驻一个角�
 | `client.js` | 浏览器端全部逻辑：峰谷判定、节假日表、`BADGE_CSS`、拖动/关闭 |
 | `index.js` | Host 侧，目前只有空的 `apply` |
 | `icon.svg` | 插件卡片图标（DSH 读 `package.json.icon`） |
-| `assets/` | README 用的实拍截图 |
+| `assets/` | README 用的图：`screenshot-*.png` 是桌面版实拍；`screenshot-states.png` **不是实拍**，是按 `BADGE_CSS` 真实尺寸栅格化的四种状态配色对照，改配色后要一起更新 |
 | `cordis.patch.yml` | 往 profile 插入插件行 |
 
 ## 已经定下来的决定（不要随手改回去）

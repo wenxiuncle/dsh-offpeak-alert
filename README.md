@@ -17,6 +17,12 @@
 
 **本插件不改动任何背景色或主题令牌**，界面配色始终完全由主题决定；低谷态按主题分浅灰/深灰两套，高峰态不分主题、一律转深红。
 
+四种状态（浅色/深色主题 × 低谷/高峰）的配色对照：
+
+![角标四种状态配色对照：浅色主题的低谷与高峰、深色主题的低谷与高峰](assets/screenshot-states.png)
+
+<sub>**非实拍**：按 `BADGE_CSS` 的真实尺寸（`11px` 字、`4px 10px` 内边距、`999px` 圆角）栅格化，铺在 DSH 真实的标题栏底色上（浅色 `#f9fafb` / 深色 `#1b1b1c`），左为实际显示尺寸、右为 2× 放大。深色主题下高峰同样是深红 —— 这一条是刻意如此的，见[「改配色」](#改配色)。</sub>
+
 判定口径来自 [DeepSeek API 官方定价页](https://api-docs.deepseek.com/quick_start/pricing)：
 
 - 高峰 = **UTC 01:00–04:00 与 06:00–10:00**，**仅周一至周五**，**中国法定节假日除外**
@@ -98,6 +104,8 @@ __dshOffpeak.showBadge()   // 恢复被 × 关掉的角标
 | `[data-dsh-offpeak-badge][data-state="peak"]` + `body[data-ds-dark-theme] …[data-state="peak"]` | 深浅主题 · 高峰 | 底 `#8f1420`、字 `#ffe9ea`、红色投影 |
 | `.dsh-offpeak-close:hover` | 关闭按钮悬浮 | 浅色 `#00000018` / 深色 `#ffffff2b` / 高峰 `#ffffff33` |
 
+四种状态的观感对照见本页顶部那张 `assets/screenshot-states.png` —— 改完色可以先和它比一眼：高峰必须一眼看出是红的，低谷必须是安静的灰。
+
 写法约定（改动前先读）：
 
 1. **深浅两套都按 `body[data-ds-dark-theme]` 分支**，不要用 `prefers-color-scheme` —— DSH 的主题切换靠这个属性，媒体查询会跟着系统走、而不是跟着应用内设置走。
@@ -168,7 +176,7 @@ A badge for the **DeepSeek Harness desktop app** ([quick start](https://deepseek
 
 **Desktop app only.** The badge's default spot is the top-centre of the viewport, which is where the desktop app draws its window title bar. The browser build (DSH Web) has no such title bar, so the badge would land at the very top of the page — neither supported nor tested there. The Host side has no desktop-specific dependency.
 
-- **Peak** → the badge turns deep red. **Off-peak** → a quiet neutral badge.
+- **Peak** → the badge turns deep red (in the light *and* the dark theme — no exception). **Off-peak** → a quiet neutral badge. All four theme × state combinations are shown in the colour-comparison figure near the top (`assets/screenshot-states.png`, rasterised from the CSS, not a photo).
 - Sits centered in the title bar and can be **dragged anywhere** (position is remembered).
 - **Changes no background colors and no theme tokens** — the UI palette stays entirely up to the theme.
 - No dependencies, no network access, no build step.
