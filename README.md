@@ -12,10 +12,10 @@
 
 ![角标细节：低谷期 0.5× · 国庆节 · 转高峰 153 小时 7 分钟后 ×](assets/screenshot-badge.png)
 
-- **高峰**：角标切成**深红底 + 近白文字**
+- **高峰**：角标切成**深红底 + 近白文字**（浅色、深色主题都是这个深红）
 - **低谷**：低调中性底色，安静提示
 
-**本插件不改动任何背景色或主题令牌**，界面配色始终完全由主题决定；低谷态按主题分浅灰/深灰两套，高峰态只在浅色主题转为深红。
+**本插件不改动任何背景色或主题令牌**，界面配色始终完全由主题决定；低谷态按主题分浅灰/深灰两套，高峰态不分主题、一律转深红。
 
 判定口径来自 [DeepSeek API 官方定价页](https://api-docs.deepseek.com/quick_start/pricing)：
 
@@ -89,20 +89,19 @@ __dshOffpeak.showBadge()   // 恢复被 × 关掉的角标
 
 ## 改配色
 
-配色写在 `client.js` 的 `BADGE_CSS` 里，**故意使用字面色值而不用主题令牌**。低谷态按主题分两套，高峰态只在浅色主题转深红：
+配色写在 `client.js` 的 `BADGE_CSS` 里，**故意使用字面色值而不用主题令牌**。低谷态按主题分两套，高峰态深浅主题共用同一个深红：
 
 | 选择器 | 用途 | 当前值 |
 |---|---|---|
 | `[data-dsh-offpeak-badge]` | 浅色主题 · 低谷 | 底 `#edeef0f2`、字 `#1f2126`、描边 `#0000001f` |
 | `body[data-ds-dark-theme] [data-dsh-offpeak-badge]` | 深色主题 · 低谷 | 底 `#1c1c1feb`、字 `#f2f2f4`、描边 `#ffffff2e` |
-| `[data-dsh-offpeak-badge][data-state="peak"]` | 浅色主题 · 高峰 | 底 `#8f1420`、字 `#ffe9ea`、红色投影 |
-| `body[data-ds-dark-theme] …[data-state="peak"]` | 深色主题 · 高峰 | 保持深灰底（覆盖上面的红），投影换中性黑 |
+| `[data-dsh-offpeak-badge][data-state="peak"]` + `body[data-ds-dark-theme] …[data-state="peak"]` | 深浅主题 · 高峰 | 底 `#8f1420`、字 `#ffe9ea`、红色投影 |
 | `.dsh-offpeak-close:hover` | 关闭按钮悬浮 | 浅色 `#00000018` / 深色 `#ffffff2b` / 高峰 `#ffffff33` |
 
 写法约定（改动前先读）：
 
 1. **深浅两套都按 `body[data-ds-dark-theme]` 分支**，不要用 `prefers-color-scheme` —— DSH 的主题切换靠这个属性，媒体查询会跟着系统走、而不是跟着应用内设置走。
-2. **高峰规则先写通用形态、深色随后显式覆盖**，不用 `:not()`。语法越简单，级联越不容易被误判。
+2. **高峰规则要写两个选择器，缺一不可**：通用形态 `[data-dsh-offpeak-badge][data-state="peak"]`（特异性 0,2,0）只压得住浅色的基础规则（0,1,0）；深色主题的基础规则 `body[data-ds-dark-theme] [data-dsh-offpeak-badge]`（0,2,1）反而更高，必须再补一条带 `body[data-ds-dark-theme]` 的高峰规则（0,3,1）才压得住。**只删掉深色那条、以为"通用形态会自然生效"，深色主题的高峰就会退回灰底 —— 表现就是文字提示高峰、气泡不变色。**
 3. 每套配色都写完整的简写属性（`border` 而不只是 `border-color`），避免与基础规则的简写相互重置。
 4. `background` 是简写属性：hover 规则必须声明在基础规则之后，否则底色会被基础规则的 `background: transparent` 重置。
 

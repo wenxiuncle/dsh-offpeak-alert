@@ -207,19 +207,10 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 高峰态的视觉覆盖。
+     * 角标样式：字面色值，不引用任何主题令牌（因此不会随主题令牌改版而漂移）。
      *
-     * 主题把界面底色与卡片层次都建立在 `--dsw-static-neutral-bluish-*` 灰阶上
-     * （`--dsw-alias-bg-base`、`--dsw-alias-bg-layer-*`、`--dsw-alias-bg-overlay`、
-     * `--dsw-alias-bg-module-platform` 都是它的别名）。因此在 body 上重定义这一串
-     * 灰阶为同明度的红阶，整页、卡片、浮层会整体转红而保留原有层次；
-     * 低谷时本样式表不加载，界面完全恢复原主题。
-     */
-    /**
-     * 角标样式：深浅两套主题**共用同一套配色**（不引用任何主题令牌，
-     * 因此不会随主题切换而变色）。
-     *
-     * 高峰：深红底 + 近白文字 + 深红圆点脉冲
+     * 高峰：深红底 + 近白文字 —— **深浅两套主题都是这个深红**，
+     *       高峰就是要一眼看出来，不做"深色主题保持灰底"的例外。
      * 低谷：低调的中性底色，只作安静的状态提示
      *
      * 本插件**不改动任何背景色**，只插入这一个 position:fixed 的角标。
@@ -269,24 +260,19 @@ window.__ModuleLoader__.load({
       opacity: 0.72;
     }
 
-    /* 高峰（浅色主题）：深红底 + 浅字。
-       语法刻意保持简单：高峰规则不带主题条件，深色主题随后显式覆盖
-       （body[data-ds-dark-theme] 特异性更高 + 声明更靠后）。
-       这样"浅色变红、深色不变"的意图谁都能一眼看懂，也不依赖 :not() 的解析。 */
-    [data-dsh-offpeak-badge][data-state="peak"] {
+    /* 高峰：深红底 + 浅字。深浅两套主题共用这一组值，所以写在同一块里，
+       用两个选择器覆盖两种主题下的基础规则：
+         · [data-dsh-offpeak-badge][data-state="peak"]                  （0,2,0）压过浅色基础规则（0,1,0）
+         · body[data-ds-dark-theme] …[data-state="peak"]                （0,3,1）压过深色基础规则（0,2,1）
+       第二条不能省：只说通用形态的话，深色主题会被
+       body[data-ds-dark-theme] [data-dsh-offpeak-badge]（0,2,1）反过来压住，
+       高峰就会退回深灰底 —— 那正是"文字提示高峰、气泡不变色"的老毛病。 */
+    [data-dsh-offpeak-badge][data-state="peak"],
+    body[data-ds-dark-theme] [data-dsh-offpeak-badge][data-state="peak"] {
       border: 1px solid #8f1420;
       background: #8f1420;
       color: #ffe9ea;
       box-shadow: 0 1px 6px #8f142066;
-      opacity: 1;
-    }
-
-    /* 深色主题在高峰保持深灰底（覆盖上面的红色，并换掉红色投影） */
-    body[data-ds-dark-theme] [data-dsh-offpeak-badge][data-state="peak"] {
-      border: 1px solid #ffffff2e;
-      background: #1c1c1feb;
-      color: #f2f2f4;
-      box-shadow: 0 1px 6px #00000059;
       opacity: 1;
     }
 
