@@ -565,6 +565,31 @@ window.__ModuleLoader__.load({
     let goFetchedAt = 0; // 客户端节流：60s 内不重复发起 RPC
     const goState = { result: null, error: null };
 
+    /**
+     * $mount 的贡献体必须是「完整形状」的 descriptor：id / service / namespace /
+     * method / invocation / parameters / result 一个都不能少。dsh-api-gateway 的
+     * mountContribution 会逐条校验（typert-registry 的 validateInvocation 要求
+     * id/service/namespace/method/result 全部存在），缺任何一项 $mount 直接抛错，
+     * 表现就是第二屏永远「Go 不可用」。形状对齐 dsh-cost-meter 客户端里
+     * descriptors.map(...) 的规范化步骤（它同样先写极简形状再补全字段）。
+     */
+    const GO_DESCRIPTOR = {
+      id: 'dsh-offpeak-alert#offpeak/getGoUsage',
+      service: 'offpeak',
+      namespace: 'offpeak',
+      method: 'getGoUsage',
+      invocation: { kind: 'direct' },
+      parameters: [],
+      result: {
+        mode: 'strict',
+        typeSymbol: 'dsh-offpeak-alert#GoUsage',
+        create: () => ({
+          // 客户端不校验结果结构（宿主半已经用 zod 解码过），保持透传。
+          parse: (value) => value,
+        }),
+      },
+    };
+
     function goUsageText() {
       const r = goState.result;
       if (r) {
@@ -595,9 +620,12 @@ window.__ModuleLoader__.load({
           goState.error = null;
         } else {
           goState.error = q?.error?.message ?? '调用失败';
+          // 诊断：把真实错误打到 DevTools Console，角标只显示通用文案。
+          try { console.warn('[dsh-offpeak-alert] Go 用量 RPC 返回错误：', q?.error); } catch { /* 控制台不可用 */ }
         }
       } catch (error) {
         goState.error = String(error?.message ?? error);
+        try { console.warn('[dsh-offpeak-alert] Go 用量 RPC 调用异常：', error); } catch { /* 控制台不可用 */ }
       } finally {
         goFetching = false;
         goFetchedAt = Date.now();
@@ -796,7 +824,7 @@ window.__ModuleLoader__.load({
             if (!remote || typeof remote.$mount !== 'function') return;
             dispose = await remote.$mount({
               package: PLUGIN_ID,
-              descriptors: [{ method: 'getGoUsage' }],
+              descriptors: [GO_DESCRIPTOR],
             });
             if (cancelled) {
               try { dispose(); } catch { /* 卸载竞态：已取消即可 */ }
@@ -805,8 +833,10 @@ window.__ModuleLoader__.load({
             }
             goProxy = ctx.get('remote.offpeak') ?? null;
             if (goScreen === 1) refreshGoUsage();
-          } catch {
+          } catch (error) {
             goProxy = null; // 挂载失败：照常单屏
+            // 诊断：挂载失败的原因打到 DevTools Console（形状不对/宿主过旧等）。
+            try { console.warn('[dsh-offpeak-alert] Go 用量 RPC 挂载失败：', error); } catch { /* 控制台不可用 */ }
           }
         })();
         return () => {
