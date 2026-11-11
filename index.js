@@ -55,7 +55,10 @@ function normalizeGoKey(raw) {
 async function resolveCredentialRef(ctx, name) {
   try {
     const credentials = ctx.get('credentials')
-    const value = await credentials?.resolve?.(credentialRef(name))
+    // 当前 dsh-credentials.resolve() 返回 { value, source }，不是密钥字符串本身。
+    // 兼容旧接口若直接返回字符串；缺失/错误则继续查 env。
+    const hit = await credentials?.resolve?.(credentialRef(name))
+    const value = typeof hit === 'string' ? hit : hit?.value
     if (typeof value === 'string' && normalizeGoKey(value)) return normalizeGoKey(value)
   } catch {
     /* 无凭据服务/无该条目：继续往下找 */
@@ -112,9 +115,39 @@ function findGoKeyInAuthJson() {
   }
 }
 
-/** Key 解析顺序：专用引用 → 官方 Go 兼容引用 → opencode auth.json。 */
+/**
+ * 只收集 DSH 模型设置中指向官方 OpenCode Go API 的凭据引用，
+ * 避免误把其它 OpenCode Zen、自定义代理或其他厂商的 Key 用来查额度。
+ */
+function goKeyRefs(ctx) {
+  const refs = new Set(['OPENCODE_GO_API_KEY'])
+  try {
+    const providers = ctx?.get?.('settings')?.get?.('llm-pi-ai')?.providers
+    if (providers && typeof providers === 'object' && !Array.isArray(providers)) {
+      for (const profile of Object.values(providers)) {
+        if (typeof profile?.baseURL !== 'string' || typeof profile?.apiKeyEnv !== 'string') continue
+        try {
+          const url = new URL(profile.baseURL)
+          if (url.origin !== 'https://opencode.ai'
+            || !/^\/zen\/go\/v1\/?$/.test(url.pathname)
+            || url.username || url.password || url.search || url.hash) continue
+          const ref = profile.apiKeyEnv.trim()
+          if (ref) refs.add(credentialRef(ref))
+        } catch {
+          /* 无效端点或环境变量名不参与发现。 */
+        }
+      }
+    }
+  } catch {
+    /* 老宿主无 settings 服务时仍使用既有来源。 */
+  }
+  refs.add('OPENCODE_API_KEY')
+  return [...refs]
+}
+
+/** Key 解析顺序：专用引用 → DSH 官方 Go 路由引用 → 兼容名 → auth.json。 */
 async function resolveGoKey(ctx) {
-  for (const name of ['OPENCODE_GO_API_KEY', 'OPENCODE_API_KEY']) {
+  for (const name of goKeyRefs(ctx)) {
     const key = await resolveCredentialRef(ctx, name)
     if (key) return key
   }
@@ -245,8 +278,8 @@ function createGoUsageService(ctx) {
       return resultShell(
         'off',
         'Go 未配置',
-        '没有找到 OpenCode Go 的 API Key：DSH 凭据库、OPENCODE_GO_API_KEY / OPENCODE_API_KEY '
-        + '环境变量与 opencode auth.json 里都没有。配置任意一处即可。',
+        '没有找到 OpenCode Go 的 API Key：DSH 凭据库（含模型设置里的官方 Go 路由）、'
+        + 'OPENCODE_GO_API_KEY / OPENCODE_API_KEY 环境变量与 opencode auth.json 里都没有。配置任意一处即可。',
       )
     }
     return queryGoQuotaWithRetry(key)
