@@ -385,7 +385,7 @@ window.__ModuleLoader__.load({
       badge.setAttribute(BADGE_ATTR, '');
       badge.setAttribute('role', 'status');
       badge.setAttribute('aria-live', 'polite');
-      badge.setAttribute('title', '按住可拖动');
+      badge.setAttribute('title', '单击切换 Go 用量屏，按住可拖动');
       const text = document.createElement('span');
       text.className = 'dsh-offpeak-text';
       const close = document.createElement('button');
@@ -527,7 +527,10 @@ window.__ModuleLoader__.load({
       } else {
         delete badge.dataset.stale;
       }
-      badge.querySelector('.dsh-offpeak-text').textContent = parts.join(' · ');
+      badge.querySelector('.dsh-offpeak-text').textContent =
+        goScreen === 1 ? goUsageText() : parts.join(' · ');
+      // 第二屏活跃时顺带刷新 Go 用量（Host 侧有缓存，代价只是一次本地 RPC）
+      if (goScreen === 1) refreshGoUsage();
     }
 
     /** 规则过期的提醒只在 Console 打一次，避免每 30 秒刷屏。 */
@@ -547,6 +550,69 @@ window.__ModuleLoader__.load({
     }
 
     /**
+     * 第二屏：OpenCode Go 用量。
+     *
+     * 第一屏（峰谷时段）仍是默认与主功能；单击角标切到第二屏，再单击切回。
+     * 切换状态只记在内存里，每次运行都从第一屏开始。
+     * 数据来自 Host 半的 offpeak.getGoUsage() RPC（Key 只在宿主进程内流转），
+     * Host 半不可用时（浏览器版等）第二屏显示中性提示，第一屏不受影响。
+     *
+     * 光标保持 CSS 里的 default（普通箭头）：单击切换是隐藏能力，不变小手。
+     */
+    let goScreen = 0; // 0 = 峰谷屏（默认），1 = Go 用量屏
+    let goProxy = null; // remote.offpeak 服务代理；挂载成功后才有值
+    let goFetching = false; // 客户端侧请求去重（Host 侧另有 5 分钟缓存）
+    let goFetchedAt = 0; // 客户端节流：60s 内不重复发起 RPC
+    const goState = { result: null, error: null };
+
+    function goUsageText() {
+      const r = goState.result;
+      if (r) {
+        if (r.status === 'ok') {
+          const w = r.windows || {};
+          const pct = (x) =>
+            x && typeof x.percent === 'number' && Number.isFinite(x.percent)
+              ? `${Math.round(x.percent)}%`
+              : '—';
+          return `Go 5h ${pct(w.five)} · 周 ${pct(w.weekly)} · 月 ${pct(w.monthly)}`;
+        }
+        // off（未配置/无订阅）与 error（登录无效/请求失败）都显示宿主写好的短文案
+        if (r.message) return r.message;
+      }
+      if (goState.error) return 'Go 不可用';
+      return goProxy ? 'Go 加载中…' : 'Go 不可用';
+    }
+
+    /** 拉一次 Go 用量（Host 侧有缓存，这里只做客户端去重与节流）。 */
+    async function refreshGoUsage() {
+      if (!goProxy || goFetching) return;
+      if (Date.now() - goFetchedAt < 60_000) return;
+      goFetching = true;
+      try {
+        const q = await goProxy.getGoUsage();
+        if (q && typeof q === 'object' && q.ok === true) {
+          goState.result = q.value ?? null;
+          goState.error = null;
+        } else {
+          goState.error = q?.error?.message ?? '调用失败';
+        }
+      } catch (error) {
+        goState.error = String(error?.message ?? error);
+      } finally {
+        goFetching = false;
+        goFetchedAt = Date.now();
+      }
+      if (goScreen === 1) paint();
+    }
+
+    /** 单击切换：峰谷屏 <-> Go 用量屏。 */
+    function toggleGoScreen() {
+      goScreen = goScreen === 1 ? 0 : 1;
+      paint();
+      if (goScreen === 1) refreshGoUsage();
+    }
+
+    /**
      * 客户端插件体：只往页面插入一个右下角角标，不占用插槽、不引入 Client 包、
      * **不改动任何背景色或主题令牌**，因此不会与宿主布局或其它插件冲突。
      *
@@ -558,6 +624,8 @@ window.__ModuleLoader__.load({
       // 只读查询入口，方便在开发者工具 Console 里核对判定：
       //   __dshOffpeak.status()        当前时段、判断依据、规则是否可能过期
       //   __dshOffpeak.nextSwitch()    下一次切换时刻
+      //   __dshOffpeak.goUsage()       立即刷新并返回 Go 用量原始结果
+      //   __dshOffpeak.toggleScreen()  手动切换第一/第二屏
       //   __dshOffpeak.showBadge()     手动恢复被关闭的角标
       window.__dshOffpeak = {
         status: () => {
@@ -573,6 +641,15 @@ window.__ModuleLoader__.load({
           };
         },
         nextSwitch: () => nextSwitch(Date.now()),
+        goUsage: async () => {
+          goFetchedAt = 0; // 强制绕过客户端节流，Host 侧缓存仍在
+          await refreshGoUsage();
+          return goState.result ?? { error: goState.error ?? '不可用' };
+        },
+        toggleScreen: () => {
+          toggleGoScreen();
+          return goScreen;
+        },
         showBadge: () => {
           dismissedInMemory = false;
           try {
@@ -657,6 +734,9 @@ window.__ModuleLoader__.load({
           setTimeout(() => {
             if (badge.dataset) delete badge.dataset.justDragged;
           }, 0);
+        } else if (event && event.type === 'pointerup') {
+          // 没有位移 = 单击：切到 Go 用量第二屏（pointercancel 不算单击）
+          toggleGoScreen();
         }
         dragState = null;
       };
@@ -703,6 +783,41 @@ window.__ModuleLoader__.load({
       }
 
       ctx.effect(installStyles, 'offpeak-alert: badge stylesheet');
+
+      // Go 用量数据通道：挂载 Host 半的 offpeak.getGoUsage() RPC。
+      // 失败/不可用（浏览器版、老宿主）时 goProxy 保持 null，
+      // 第二屏显示中性提示，第一屏峰谷功能完全不受影响。
+      ctx.effect(() => {
+        let dispose = null;
+        let cancelled = false;
+        (async () => {
+          try {
+            const remote = ctx.remote ?? ctx.get('remote');
+            if (!remote || typeof remote.$mount !== 'function') return;
+            dispose = await remote.$mount({
+              package: PLUGIN_ID,
+              descriptors: [{ method: 'getGoUsage' }],
+            });
+            if (cancelled) {
+              try { dispose(); } catch { /* 卸载竞态：已取消即可 */ }
+              dispose = null;
+              return;
+            }
+            goProxy = ctx.get('remote.offpeak') ?? null;
+            if (goScreen === 1) refreshGoUsage();
+          } catch {
+            goProxy = null; // 挂载失败：照常单屏
+          }
+        })();
+        return () => {
+          cancelled = true;
+          if (dispose) {
+            try { dispose(); } catch { /* 已释放时忽略 */ }
+          }
+          goProxy = null;
+        };
+      }, 'offpeak-alert: Go 用量 remote 挂载');
+
       ctx.effect(() => {
         paint();
         const timer = setInterval(paint, 30000);

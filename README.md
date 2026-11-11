@@ -38,6 +38,17 @@
 
 节假日当天会带上节日名。判定每 30 秒复算一次，跨时段边界最多延迟约 30 秒变色。
 
+**第二屏：OpenCode Go 用量。** 单击角标切到第二屏，显示当前 OpenCode Go 订阅的用量：
+
+```text
+Go 5h 62% · 周 31% · 月 44%
+```
+
+- **5h** = 滚动 5 小时窗口（约等于月额度的 20%）；**周 / 月** = 周 / 月窗口。
+- 再点一下回到峰谷屏；每次运行默认从峰谷屏开始。
+- 数据由宿主侧（`index.js`）直接向 OpenCode 请求，Key 从 DSH 凭据库 / `OPENCODE_GO_API_KEY` 或 `OPENCODE_API_KEY` 环境变量 / `~/.local/share/opencode/auth.json` 自动发现，**零配置**；找不到时第二屏显示「Go 未配置」等中性提示，峰谷屏不受影响。
+- 用量结果在宿主侧缓存 5 分钟（失败 60 秒），不会频繁打 OpenCode 的接口。
+
 ## 关闭角标
 
 角标右侧有一个 **×** 按钮，点一下即可关闭。
@@ -50,6 +61,7 @@
 **默认位置：标题栏水平居中、贴窗口顶边**（`top: 4px`）。按住角标的任意位置即可拖到别处 —— 例如右上角三件套那一排。
 
 - 整条角标都是拖拽手柄（关闭按钮那一小块除外，那里留给点击）。
+- **按住没动再松开 = 单击**，会切换峰谷屏 / Go 用量屏（见[角标文案](#角标文案)）；拖动了位置就是挪角标，不会切屏。
 - 光标保持普通箭头，不变成手型。
 - **拖过之后就不再自动居中**：位置存 `localStorage`，重开应用后保持。
 - 没拖过时，窗口宽度变化会跟着重新居中；拖过后只在超界时收敛回可见范围。
@@ -81,16 +93,19 @@
 __dshOffpeak.status()      // { status:'peak'|'off-peak', holidayName, reason, beijing, ... }
 __dshOffpeak.nextSwitch()  // { at: <时间戳>, peak: <切换后的状态> }
 __dshOffpeak.showBadge()   // 恢复被 × 关掉的角标
+__dshOffpeak.goUsage()     // 立即刷新并返回 Go 用量：{ status, windows:{ five, weekly, monthly }, ... }
+__dshOffpeak.toggleScreen()// 切换角标第一屏（峰谷）/ 第二屏（Go 用量）
 ```
 
 ## 组件
 
 | 文件 | 作用 |
 |---|---|
-| `package.json` | 包清单：`dsh.bundle.patch` 指向补丁，`dsh.client` 声明浏览器端产物 |
+| `package.json` | 包清单：`dsh.bundle.patch` 指向补丁，`dsh.client` 声明浏览器端产物，`exports['./typert']` 声明宿主侧 typert 方法表 |
 | `cordis.patch.yml` | 往当前 profile 插入插件行 |
-| `index.js` | Host 侧，只导出 `apply`（效果全在浏览器端） |
-| `client.js` | 浏览器端：峰谷判定 + 标题栏居中的可拖动角标 |
+| `index.js` | Host 侧：只导出 `apply`。注册 `offpeak` 服务 —— 解析 OpenCode Go 的 Key（凭据库 / 环境变量 / auth.json）并请求用量接口，带缓存与错误归一化；峰谷判定不在这里 |
+| `typert.host.js` | 宿主侧 typert 方法表（`offpeak.getGoUsage`），把上面的服务暴露给浏览器端 |
+| `client.js` | 浏览器端：峰谷判定 + 标题栏居中的可拖动角标 + 第二屏（Go 用量）展示 |
 | `icon.svg` | 插件卡片图标：深灰圆角块，上浅下深对半切开（峰／谷），中间是近白单线 **1/2**，斜杠用浅灰 `#b6bcc4`。**刻意不用红色、不用叹号** —— 插件列表里的红色叹号会被读成「这个插件报错了」 |
 
 ## 改配色
@@ -156,7 +171,8 @@ __dshOffpeak.showBadge()   // 恢复被 × 关掉的角标
 - 只影响主窗口文档；终端、文档预览等独立 iframe 内不显示角标。
 - 角标 `position: fixed` 脱离文档流，不占位、不挤压宿主布局；文案单行不换行，只有极窄窗口才会以省略号收尾。
 - 不改主题、不改背景、不写 `localStorage`（位置与关闭状态分别记 `localStorage`/`sessionStorage`）、不注册全局事件，卸载即彻底还原。
-- 角标除拖动/关闭所需的最小命中区域外不做交互；它占据的那一小块矩形会接收鼠标事件，默认位置（标题栏居中）通常没有可点控件，如与其它元素重叠可拖开。
+- 峰谷判定离线进行，不联网；第二屏（Go 用量）是唯一的网络请求，且只在切到第二屏时按需发出并缓存。
+- 角标的交互只有拖动、关闭和单击切屏；它占据的那一小块矩形会接收鼠标事件，默认位置（标题栏居中）通常没有可点控件，如与其它元素重叠可拖开。
 
 ## 许可
 
@@ -165,7 +181,7 @@ __dshOffpeak.showBadge()   // 恢复被 × 关掉的角标
 ## 关于本项目
 
 本项目在 AI 编程助手（DeepSeek Harness 及其内置 agent）协助下完成，包括规则实现、配色方案与自动化自检脚本。
-判定规则以 [DeepSeek API 官方定价页](https://api-docs.deepseek.com/quick_start/pricing) 为准，本插件不联网、不保证与官网实时一致 —— 请留意角标上的「规则待核」提示。
+判定规则以 [DeepSeek API 官方定价页](https://api-docs.deepseek.com/quick_start/pricing) 为准，峰谷判定不联网、不保证与官网实时一致 —— 请留意角标上的「规则待核」提示。
 
 ---
 
@@ -178,8 +194,9 @@ A badge for the **DeepSeek Harness desktop app** ([quick start](https://deepseek
 
 - **Peak** → the badge turns deep red (in the light *and* the dark theme — no exception). **Off-peak** → a quiet neutral badge. All four theme × state combinations are shown in the colour-comparison figure near the top (`assets/screenshot-states.png`, rasterised from the CSS, not a photo).
 - Sits centered in the title bar and can be **dragged anywhere** (position is remembered).
+- **Single click** (press without moving) toggles the second screen: current **OpenCode Go usage**, e.g. `Go 5h 62% · 周 31% · 月 44%`. The schedule screen is always the default.
 - **Changes no background colors and no theme tokens** — the UI palette stays entirely up to the theme.
-- No dependencies, no network access, no build step.
+- No dependencies, no build step. The peak/off-peak logic itself never touches the network; the Go-usage screen is the only network call, issued on demand from the host side with a short cache.
 
 Rule source: [DeepSeek API pricing](https://api-docs.deepseek.com/quick_start/pricing) — peak hours are **01:00–04:00 and 06:00–10:00 UTC, Monday–Friday, excluding Chinese public holidays**; everything else is off-peak at half the peak price.
 
