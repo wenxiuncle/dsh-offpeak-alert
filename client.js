@@ -870,7 +870,10 @@ window.__ModuleLoader__.load({
       }, 'offpeak-alert: status polling and badge');
     }
 
-    return { name: PLUGIN_ID, apply };
+    // inject: ['remote'] 必须声明：cordis 会拦截未声明的服务属性访问，
+    // 直接读 ctx.remote 会抛「cannot get property "remote" without inject」
+    // （dsh-cost-meter 同款：Re.apply=hl, Re.inject=yl, yl=["remote"]）。
+    return { name: PLUGIN_ID, inject: ['remote'], apply };
   },
 });
 
