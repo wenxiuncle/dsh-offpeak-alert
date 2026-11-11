@@ -514,7 +514,7 @@ window.__ModuleLoader__.load({
       badge.dataset.state = state.status;
       const sw = nextSwitch(now);
       const parts = [
-        state.peak ? '高峰期 1×' : '低谷期 0.5×',
+        state.peak ? '峰时 1×' : '谷时 0.5×',
         state.holidayName,
         sw ? `${sw.peak ? '转高峰' : '转低谷'} ${countdownText(now, sw.at)}后` : null,
       ].filter(Boolean);
