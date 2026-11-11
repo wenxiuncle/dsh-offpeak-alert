@@ -272,7 +272,17 @@ function createGoUsageService(ctx) {
     return inflight
   }
 
-  return { getGoUsage }
+  const service = { getGoUsage }
+  // dsh-api-gateway 的 validateBinding 要求 Host service 实例暴露此绑定，
+  // 否则 strict Typert 描述符虽已解析，RPC 调用仍会报「没有可见的
+  // typertRemote binding」。与 dsh-cost-meter 的手写绑定保持一致。
+  Object.defineProperty(service, 'typertRemote', {
+    configurable: false,
+    enumerable: false,
+    writable: false,
+    value: { service, serviceKey: 'offpeak', namespace: 'offpeak' },
+  })
+  return service
 }
 
 /**
