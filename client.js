@@ -599,7 +599,7 @@ window.__ModuleLoader__.load({
             x && typeof x.percent === 'number' && Number.isFinite(x.percent)
               ? `${Math.round(x.percent)}%`
               : '—';
-          return `Go 5h ${pct(w.five)} · 周 ${pct(w.weekly)} · 月 ${pct(w.monthly)}`;
+          return `Go 5小时 ${pct(w.five)} · 周 ${pct(w.weekly)} · 月 ${pct(w.monthly)}`;
         }
         // off（未配置/无订阅）与 error（登录无效/请求失败）都显示宿主写好的短文案
         if (r.message) return r.message;

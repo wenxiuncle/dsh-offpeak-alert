@@ -41,10 +41,10 @@
 **第二屏：OpenCode Go 用量。** 单击角标切到第二屏，显示当前 OpenCode Go 订阅的用量：
 
 ```text
-Go 5h 62% · 周 31% · 月 44%
+Go 5小时 62% · 周 31% · 月 44%
 ```
 
-- **5h** = 滚动 5 小时窗口（约等于月额度的 20%）；**周 / 月** = 周 / 月窗口。
+- **5小时** = 滚动 5 小时窗口（约等于月额度的 20%）；**周 / 月** = 周 / 月窗口。
 - 再点一下回到峰谷屏；每次运行默认从峰谷屏开始。
 - 数据由宿主侧（`index.js`）直接向 OpenCode 请求，Key 从 DSH 凭据库 / `OPENCODE_GO_API_KEY` 或 `OPENCODE_API_KEY` 环境变量 / `~/.local/share/opencode/auth.json` 自动发现，**零配置**；找不到时第二屏显示「Go 未配置」等中性提示，峰谷屏不受影响。
 - 用量结果在宿主侧缓存 5 分钟（失败 60 秒），不会频繁打 OpenCode 的接口。
@@ -194,7 +194,7 @@ A badge for the **DeepSeek Harness desktop app** ([quick start](https://deepseek
 
 - **Peak** → the badge turns deep red (in the light *and* the dark theme — no exception). **Off-peak** → a quiet neutral badge. All four theme × state combinations are shown in the colour-comparison figure near the top (`assets/screenshot-states.png`, rasterised from the CSS, not a photo).
 - Sits centered in the title bar and can be **dragged anywhere** (position is remembered).
-- **Single click** (press without moving) toggles the second screen: current **OpenCode Go usage**, e.g. `Go 5h 62% · 周 31% · 月 44%`. The schedule screen is always the default.
+- **Single click** (press without moving) toggles the second screen: current **OpenCode Go usage**, e.g. `Go 5小时 62% · 周 31% · 月 44%`. The schedule screen is always the default.
 - **Changes no background colors and no theme tokens** — the UI palette stays entirely up to the theme.
 - No dependencies, no build step. The peak/off-peak logic itself never touches the network; the Go-usage screen is the only network call, issued on demand from the host side with a short cache.
 
