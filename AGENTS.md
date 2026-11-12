@@ -11,7 +11,7 @@ DeepSeek Harness **桌面版**插件：在应用窗口标题栏常驻一个角�
   `C:\Users\lijis\.dsh\profiles\desktop\node_modules\dsh-offpeak-alert` → 本目录（profile 里登记为 `link:` 依赖）
 
   登记位置：`…\profiles\desktop\package.json` 的 `dsh.profile.bundles`，以及 `…\profiles\desktop\cordis.patch.yml` 里的 `offpeak-alert` 行。
-- 改客户端代码后需**重载插件**；`package.json`（尤其 `icon`）是 host 侧读成 data URL 的，可能要**重启 DSH** 才刷新。
+- 改客户端代码后需**重载插件**；但改 **Host 侧代码**（`index.js`、`typert.host.js`）或 `package.json`（尤其 `icon`）后，**重载插件不够、必须完全退出并重启 DSH**：插件 disable/enable 只重新执行 `client.js`，Host 模块命中 ESM 缓存仍是旧版、typert 注册表也只在启动时扫描一次。症状是 RPC 报 `gateway/invocation-unavailable`（或 method/service-unavailable），角标静默不显示新功能（客户端会把「宿主侧还在运行旧版插件代码」的提示打进 DevTools Console）。
 - 公开仓库：<https://github.com/wenxiuncle/dsh-offpeak-alert>
 
 ## 文件地图

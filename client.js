@@ -652,6 +652,16 @@ window.__ModuleLoader__.load({
       return amount ? `${symbol}${amount}` : null;
     }
 
+    /** 宿主端点缺失（Host 侧还在跑旧版代码、没加载新方法）时补一条可操作的提示。 */
+    function warnHostStale(error) {
+      const code = error && typeof error === 'object' ? error.code : undefined;
+      if (code !== 'gateway/definition-unavailable' && code !== 'gateway/invocation-unavailable'
+        && code !== 'gateway/method-unavailable' && code !== 'gateway/service-unavailable') return;
+      try {
+        console.warn('[dsh-offpeak-alert] 宿主侧还在运行旧版插件代码（' + code + '）：重载插件不会重新加载 index.js/typert.host.js；请完全退出并重启 DeepSeek Harness 后再试。');
+      } catch { /* 控制台不可用 */ }
+    }
+
     /** 拉一次 Go 用量（Host 侧有缓存，这里只做客户端去重与节流）。 */
     async function refreshGoUsage() {
       if (!offpeakProxy || goFetching) return;
@@ -666,10 +676,12 @@ window.__ModuleLoader__.load({
           goState.error = q?.error?.message ?? '调用失败';
           // 诊断：把真实错误打到 DevTools Console，角标只显示通用文案。
           try { console.warn('[dsh-offpeak-alert] Go 用量 RPC 返回错误：', q?.error); } catch { /* 控制台不可用 */ }
+          warnHostStale(q?.error);
         }
       } catch (error) {
         goState.error = String(error?.message ?? error);
         try { console.warn('[dsh-offpeak-alert] Go 用量 RPC 调用异常：', error); } catch { /* 控制台不可用 */ }
+        warnHostStale(error);
       } finally {
         goFetching = false;
         goFetchedAt = Date.now();
@@ -691,10 +703,12 @@ window.__ModuleLoader__.load({
           balanceState.error = q?.error?.message ?? '调用失败';
           // 诊断：把真实错误打到 DevTools Console，角标只显示通用文案。
           try { console.warn('[dsh-offpeak-alert] 余额 RPC 返回错误：', q?.error); } catch { /* 控制台不可用 */ }
+          warnHostStale(q?.error);
         }
       } catch (error) {
         balanceState.error = String(error?.message ?? error);
         try { console.warn('[dsh-offpeak-alert] 余额 RPC 调用异常：', error); } catch { /* 控制台不可用 */ }
+        warnHostStale(error);
       } finally {
         balanceFetching = false;
         balanceFetchedAt = Date.now();

@@ -176,6 +176,7 @@ __dshOffpeak.toggleScreen()// 切换角标第一屏（峰谷）/ 第二屏（Go 
 - 不改主题、不改背景、不写 `localStorage`（位置与关闭状态分别记 `localStorage`/`sessionStorage`）、不注册全局事件，卸载即彻底还原。
 - 峰谷判定离线进行，不联网；网络请求只有 Go 用量与 DeepSeek 余额两个，都走宿主侧、按需发出并缓存（余额跟在第一屏倒计时后，Go 用量在第二屏）。
 - 角标的交互只有拖动、关闭和单击切屏；它占据的那一小块矩形会接收鼠标事件，默认位置（标题栏居中）通常没有可点控件，如与其它元素重叠可拖开。
+- 更新插件后，只有浏览器端（`client.js`）「重载插件」即可生效；Host 侧改动（`index.js`、`typert.host.js`）必须**完全退出并重启 DeepSeek Harness**，否则新功能（如余额片段）会静默不显示。
 
 ## 许可
 
@@ -203,7 +204,7 @@ A badge for the **DeepSeek Harness desktop app** ([quick start](https://deepseek
 
 Rule source: [DeepSeek API pricing](https://api-docs.deepseek.com/quick_start/pricing) — peak hours are **01:00–04:00 and 06:00–10:00 UTC, Monday–Friday, excluding Chinese public holidays**; everything else is off-peak at half the peak price.
 
-Install: clone this repository, then in the DSH Plugins panel choose *Add plugin* and give the **absolute path** to this directory. The plugin is registered as a local `link:` dependency, so `git pull` + reload picks up updates.
+Install: clone this repository, then in the DSH Plugins panel choose *Add plugin* and give the **absolute path** to this directory. The plugin is registered as a local `link:` dependency, so `git pull` picks up updates — but reloading the plugin only refreshes the browser side; after Host-side changes (`index.js`, `typert.host.js`) fully quit and restart the DeepSeek Harness app, or new features silently do not appear.
 
 **Caveat:** the schedule is hard-coded and this plugin never phones home. If DeepSeek changes its peak hours, the badge will be confidently wrong. The badge therefore marks itself `规则待核` (needs review) once `SCHEDULE_VERIFIED_ON` is older than 90 days, or when the current year's public-holiday list is only an estimate. See the Chinese section above for the update procedure.
 
