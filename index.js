@@ -2,7 +2,8 @@
  * 峰谷时段红底提醒 —— Host 侧。
  *
  * 可见行为全部在浏览器端（见 `dsh.client` 指向的 ./client.js）。Host 侧只做
- * 一件事：提供 `offpeak.getGoUsage()` 服务，替客户端查询 OpenCode Go 用量。
+ * 一件事：提供 `offpeak` 服务（getGoUsage / getBalance），替客户端查询
+ * OpenCode Go 用量与 DeepSeek API 余额。
  * 网络请求放在这里（Node 上下文没有 CORS），API Key 也只在本进程内流转，
  * 不下发给浏览器端。
  *
@@ -29,6 +30,12 @@ const PLUGIN_ID = 'dsh-offpeak-alert'
 const GO_QUOTA_URL = 'https://opencode.ai/zen/go/v1/usage'
 const GO_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36'
+
+/**
+ * DeepSeek 余额查询端点（api-docs.deepseek.com「查询余额」）。只认官方
+ * api.deepseek.com 的 Key，不拿中转站/代理路由的 Key 来查（见 deepseekKeyRefs）。
+ */
+const DEEPSEEK_BALANCE_URL = 'https://api.deepseek.com/user/balance'
 const REQUEST_TIMEOUT_MS = 15_000
 const RESPONSE_MAX_BYTES = 256 * 1024
 const OK_TTL_MS = 5 * 60 * 1000
@@ -46,7 +53,7 @@ try {
 }
 
 /** 去掉可能被整段复制进来的 "Bearer " 前缀与首尾空白。 */
-function normalizeGoKey(raw) {
+function normalizeKey(raw) {
   const trimmed = String(raw ?? '').trim()
   return trimmed.replace(/^Bearer\s+/i, '').trim()
 }
@@ -59,13 +66,13 @@ async function resolveCredentialRef(ctx, name) {
     // 兼容旧接口若直接返回字符串；缺失/错误则继续查 env。
     const hit = await credentials?.resolve?.(credentialRef(name))
     const value = typeof hit === 'string' ? hit : hit?.value
-    if (typeof value === 'string' && normalizeGoKey(value)) return normalizeGoKey(value)
+    if (typeof value === 'string' && normalizeKey(value)) return normalizeKey(value)
   } catch {
     /* 无凭据服务/无该条目：继续往下找 */
   }
   try {
     const env = process.env[name]
-    if (typeof env === 'string' && normalizeGoKey(env)) return normalizeGoKey(env)
+    if (typeof env === 'string' && normalizeKey(env)) return normalizeKey(env)
   } catch {
     /* 环境变量读取异常时忽略 */
   }
@@ -108,7 +115,7 @@ function findGoKeyInAuthJson() {
     const entry = parsed?.['opencode-go']
     if (!entry || typeof entry !== 'object') return null
     if (entry.type !== undefined && entry.type !== 'api') return null
-    const key = normalizeGoKey(entry.key)
+    const key = normalizeKey(entry.key)
     return key || null
   } catch {
     return null
@@ -154,6 +161,46 @@ async function resolveGoKey(ctx) {
   return findGoKeyInAuthJson()
 }
 
+/**
+ * 只收集 DSH 模型设置中指向官方 DeepSeek API（api.deepseek.com，含 /v1
+ * 兼容前缀）的凭据引用，避免误把中转站/代理路由的 Key 用来查官方余额。
+ * apiKeyEnv 的值是引用名（如 OPENCODE_GO_API_KEY 那样的裸名），
+ * resolveCredentialRef 会统一做一次 credentialRef 包装，这里不预包装。
+ */
+function deepseekKeyRefs(ctx) {
+  const refs = new Set(['DEEPSEEK_API_KEY'])
+  try {
+    const providers = ctx?.get?.('settings')?.get?.('llm-pi-ai')?.providers
+    if (providers && typeof providers === 'object' && !Array.isArray(providers)) {
+      for (const profile of Object.values(providers)) {
+        if (typeof profile?.baseURL !== 'string' || typeof profile?.apiKeyEnv !== 'string') continue
+        try {
+          const url = new URL(profile.baseURL)
+          if (url.origin !== 'https://api.deepseek.com'
+            || !/^\/(v1)?\/?$/.test(url.pathname)
+            || url.username || url.password || url.search || url.hash) continue
+          const ref = profile.apiKeyEnv.trim()
+          if (ref) refs.add(ref)
+        } catch {
+          /* 无效端点或环境变量名不参与发现。 */
+        }
+      }
+    }
+  } catch {
+    /* 老宿主无 settings 服务时仍使用既有来源。 */
+  }
+  return [...refs]
+}
+
+/** Key 解析顺序：专用引用 → DSH 官方 DeepSeek 路由引用（同名 env 由 resolveCredentialRef 兜底）。 */
+async function resolveDeepseekKey(ctx) {
+  for (const name of deepseekKeyRefs(ctx)) {
+    const key = await resolveCredentialRef(ctx, name)
+    if (key) return key
+  }
+  return null
+}
+
 /** 把响应体读上限截断，防止异常响应吃内存。 */
 async function readBounded(body, maxBytes) {  const reader = body.getReader()
   const chunks = []
@@ -197,7 +244,7 @@ async function queryGoQuotaOnce(key) {
     redirect: 'error',
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     headers: {
-      authorization: `Bearer ${normalizeGoKey(key)}`,
+      authorization: `Bearer ${normalizeKey(key)}`,
       accept: 'application/json',
       'user-agent': GO_UA,
     },
@@ -264,28 +311,98 @@ async function queryGoQuotaWithRetry(key) {
   }
 }
 
-/**
- * 创建 Go 用量服务。5 分钟缓存 + 并发去重：多个客户端窗口同时拉取
- * 也只发一次真实请求；出错结果用更短的 TTL，尽快恢复显示。
- */
-function createGoUsageService(ctx) {
-  let cache = null
-  let inflight = null
+/** 余额结果的统一兜底：所有字段都在，保证能过 Balance codec。 */
+const balanceShell = (status, message, detail) => ({
+  status,
+  message,
+  detail,
+  fetchedAt: Date.now(),
+  currency: '',
+  balance: '',
+})
 
-  async function fetchFresh() {
-    const key = await resolveGoKey(ctx)
-    if (!key) {
-      return resultShell(
-        'off',
-        'Go 未配置',
-        '没有找到 OpenCode Go 的 API Key：DSH 凭据库（含模型设置里的官方 Go 路由）、'
-        + 'OPENCODE_GO_API_KEY / OPENCODE_API_KEY 环境变量与 opencode auth.json 里都没有。配置任意一处即可。',
-      )
-    }
-    return queryGoQuotaWithRetry(key)
+/**
+ * 查询一次 DeepSeek API 余额。HTTP 语义错误返回结构化结果，
+ * 网络层错误（超时、ECONNRESET 等）抛出，由调用方重试/兜底。
+ *
+ * 响应（api-docs.deepseek.com「查询余额」）：
+ *   { is_available, balance_infos: [{ currency: 'CNY'|'USD',
+ *     total_balance, granted_balance, topped_up_balance }] }
+ * 多币种条目时优先取 CNY（角标排版是中文语境），其次取第一条；
+ * balance 取 total_balance（含赠金与充值的可用总额）。
+ */
+async function queryBalanceOnce(key) {
+  const res = await fetch(DEEPSEEK_BALANCE_URL, {
+    method: 'GET',
+    redirect: 'error',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    headers: {
+      authorization: `Bearer ${normalizeKey(key)}`,
+      accept: 'application/json',
+      'user-agent': GO_UA,
+    },
+  })
+  const text = await readBounded(res.body, RESPONSE_MAX_BYTES)
+  let json = null
+  try {
+    json = JSON.parse(text)
+  } catch {
+    json = null
   }
 
-  async function getGoUsage() {
+  if (res.status === 401) {
+    return balanceShell(
+      'error',
+      'DeepSeek 登录无效',
+      'DeepSeek API Key 已失效或被撤销；请在 DSH 凭据库更新 DEEPSEEK_API_KEY 后重试。',
+    )
+  }
+  if (!res.ok) {
+    return balanceShell(
+      'error',
+      '余额请求失败',
+      `api.deepseek.com 返回 HTTP ${res.status}${text ? `：${text.slice(0, 200)}` : ''}`,
+    )
+  }
+
+  const infos = Array.isArray(json?.balance_infos) ? json.balance_infos : []
+  const info = infos.find((x) => x?.currency === 'CNY') ?? infos[0]
+  if (!info) {
+    return balanceShell(
+      'off',
+      '余额不可用',
+      '接口没有返回余额条目（balance_infos 为空）。',
+    )
+  }
+  const currency = typeof info.currency === 'string' ? info.currency : 'CNY'
+  const total = info.total_balance
+  const balance = typeof total === 'string' ? total
+    : typeof total === 'number' && Number.isFinite(total) ? String(total) : ''
+  return { status: 'ok', message: '', fetchedAt: Date.now(), currency, balance }
+}
+
+async function queryBalanceWithRetry(key) {
+  try {
+    return await queryBalanceOnce(key)
+  } catch {
+    // 网络抖动（超时/ECONNRESET）重试一次；再失败按网络错误兜底。
+    try {
+      return await queryBalanceOnce(key)
+    } catch (error) {
+      return balanceShell('error', '余额请求失败', String(error?.message ?? error))
+    }
+  }
+}
+
+/**
+ * 5 分钟缓存 + 并发去重的通用包装：多个客户端窗口同时拉取也只发一次真实请求；
+ * 出错结果用更短的 TTL，尽快恢复显示。onError 把 fetchFresh 抛出的网络错误
+ * 折成对应的结构化结果（Go 用 resultShell，余额用 balanceShell）。
+ */
+function cachedQuery(fetchFresh, onError) {
+  let cache = null
+  let inflight = null
+  return async () => {
     const now = Date.now()
     if (cache) {
       const ttl = cache.result.status === 'ok' ? OK_TTL_MS : ERROR_TTL_MS
@@ -293,7 +410,7 @@ function createGoUsageService(ctx) {
     }
     if (!inflight) {
       inflight = fetchFresh()
-        .catch((error) => resultShell('error', 'Go 请求失败', String(error?.message ?? error)))
+        .catch((error) => onError(String(error?.message ?? error)))
         .then((result) => {
           cache = { at: Date.now(), result }
           return result
@@ -304,8 +421,39 @@ function createGoUsageService(ctx) {
     }
     return inflight
   }
+}
 
-  const service = { getGoUsage }
+/**
+ * 创建 offpeak 服务（getGoUsage + getBalance）。缓存与并发去重见 cachedQuery。
+ */
+function createOffpeakService(ctx) {
+  const getGoUsage = cachedQuery(async () => {
+    const key = await resolveGoKey(ctx)
+    if (!key) {
+      return resultShell(
+        'off',
+        'Go 未配置',
+        '没有找到 OpenCode Go 的 API Key：DSH 凭据库（含模型设置里的官方 Go 路由）、'
+        + 'OPENCODE_GO_API_KEY / OPENCODE_API_KEY 环境变量与 opencode auth.json 里都没有。配置任意一处即可。',
+      )
+    }
+    return queryGoQuotaWithRetry(key)
+  }, (detail) => resultShell('error', 'Go 请求失败', detail))
+
+  const getBalance = cachedQuery(async () => {
+    const key = await resolveDeepseekKey(ctx)
+    if (!key) {
+      return balanceShell(
+        'off',
+        '余额未配置',
+        '没有找到 DeepSeek 的 API Key：DSH 凭据库（含模型设置里的官方 DeepSeek 路由）'
+        + '与 DEEPSEEK_API_KEY 环境变量里都没有。配置任意一处即可。',
+      )
+    }
+    return queryBalanceWithRetry(key)
+  }, (detail) => balanceShell('error', '余额请求失败', detail))
+
+  const service = { getGoUsage, getBalance }
   // dsh-api-gateway 的 validateBinding 要求 Host service 实例暴露此绑定，
   // 否则 strict Typert 描述符虽已解析，RPC 调用仍会报「没有可见的
   // typertRemote binding」。与 dsh-cost-meter 的手写绑定保持一致。
@@ -323,7 +471,7 @@ function createGoUsageService(ctx) {
  */
 export function apply(ctx) {
   // RPC 数据面：把服务挂到 'offpeak' 命名空间（清单里 service:'offpeak'）。
-  ctx.provide('offpeak', createGoUsageService(ctx))
+  ctx.provide('offpeak', createOffpeakService(ctx))
 
   // RPC 描述面兜底：正常启动由 typert-loader 按 ./typert 清单自动注册；
   // 开发热重载（file: 入口）时 loader 可能漏注册，这里补一手。

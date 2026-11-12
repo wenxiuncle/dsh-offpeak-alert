@@ -518,6 +518,10 @@ window.__ModuleLoader__.load({
         state.holidayName,
         sw ? `${sw.peak ? '转高峰' : '转低谷'} ${countdownText(now, sw.at)}后` : null,
       ].filter(Boolean);
+      // DeepSeek API 余额跟在倒计时后（如 "·￥25.15"）；查不到就不占位，
+      // 第一屏的峰谷主功能不受影响。
+      const balance = balanceText();
+      if (balance) parts.push(balance);
       // 规则可能过期时，角标末尾加一个标记，提示去 Console 看详情
       const notes = scheduleNotes(now);
       if (notes.length) {
@@ -529,8 +533,9 @@ window.__ModuleLoader__.load({
       }
       badge.querySelector('.dsh-offpeak-text').textContent =
         goScreen === 1 ? goUsageText() : parts.join(' · ');
-      // 第二屏活跃时顺带刷新 Go 用量（Host 侧有缓存，代价只是一次本地 RPC）
+      // 当前屏活跃时顺带刷新对应数据（Host 侧有缓存，代价只是一次本地 RPC）
       if (goScreen === 1) refreshGoUsage();
+      else refreshBalance();
     }
 
     /** 规则过期的提醒只在 Console 打一次，避免每 30 秒刷屏。 */
@@ -560,10 +565,19 @@ window.__ModuleLoader__.load({
      * 光标保持 CSS 里的 default（普通箭头）：单击切换是隐藏能力，不变小手。
      */
     let goScreen = 0; // 0 = 峰谷屏（默认），1 = Go 用量屏
-    let goProxy = null; // remote.offpeak 服务代理；挂载成功后才有值
+    let offpeakProxy = null; // remote.offpeak 服务代理（Go 用量 + 余额）；挂载成功后才有值
     let goFetching = false; // 客户端侧请求去重（Host 侧另有 5 分钟缓存）
     let goFetchedAt = 0; // 客户端节流：60s 内不重复发起 RPC
     const goState = { result: null, error: null };
+
+    /**
+     * DeepSeek API 余额：第一屏倒计时后追加 "·￥25.15" 这样的短文案。
+     * 数据来自 Host 半的 offpeak.getBalance() RPC（Key 只在宿主进程内流转），
+     * 拿不到时（浏览器版、未配 Key、请求失败）第一屏不显示余额段。
+     */
+    let balanceFetching = false; // 客户端侧请求去重（Host 侧另有 5 分钟缓存）
+    let balanceFetchedAt = 0; // 客户端节流：60s 内不重复发起 RPC
+    const balanceState = { result: null, error: null };
 
     /**
      * $mount 的贡献体必须是「完整形状」的 descriptor：id / service / namespace /
@@ -590,6 +604,23 @@ window.__ModuleLoader__.load({
       },
     };
 
+    /** 余额 descriptor：形状要求同上（完整形状，缺任何一项 $mount 直接抛错）。 */
+    const BALANCE_DESCRIPTOR = {
+      id: 'dsh-offpeak-alert#offpeak/getBalance',
+      service: 'offpeak',
+      namespace: 'offpeak',
+      method: 'getBalance',
+      invocation: { kind: 'direct' },
+      parameters: [],
+      result: {
+        mode: 'strict',
+        typeSymbol: 'dsh-offpeak-alert#Balance',
+        create: () => ({
+          parse: (value) => value,
+        }),
+      },
+    };
+
     function goUsageText() {
       const r = goState.result;
       if (r) {
@@ -605,16 +636,29 @@ window.__ModuleLoader__.load({
         if (r.message) return r.message;
       }
       if (goState.error) return 'Go 不可用';
-      return goProxy ? 'Go 加载中…' : 'Go 不可用';
+      return offpeakProxy ? 'Go 加载中…' : 'Go 不可用';
+    }
+
+    /**
+     * 第一屏的余额短文案（如 "￥25.15"）；拿不到（未配置/出错/字段缺失）
+     * 返回 null，第一屏就不显示余额段。多币种时 Host 半已优先取 CNY。
+     */
+    function balanceText() {
+      const r = balanceState.result;
+      if (!r || r.status !== 'ok') return null;
+      const symbol = r.currency === 'USD' ? '$' : '￥';
+      const n = Number.parseFloat(r.balance);
+      const amount = Number.isFinite(n) ? n.toFixed(2) : String(r.balance ?? '');
+      return amount ? `${symbol}${amount}` : null;
     }
 
     /** 拉一次 Go 用量（Host 侧有缓存，这里只做客户端去重与节流）。 */
     async function refreshGoUsage() {
-      if (!goProxy || goFetching) return;
+      if (!offpeakProxy || goFetching) return;
       if (Date.now() - goFetchedAt < 60_000) return;
       goFetching = true;
       try {
-        const q = await goProxy.getGoUsage();
+        const q = await offpeakProxy.getGoUsage();
         if (q && typeof q === 'object' && q.ok === true) {
           goState.result = q.value ?? null;
           goState.error = null;
@@ -631,6 +675,31 @@ window.__ModuleLoader__.load({
         goFetchedAt = Date.now();
       }
       if (goScreen === 1) paint();
+    }
+
+    /** 拉一次 DeepSeek 余额（Host 侧有缓存，这里只做客户端去重与节流）。 */
+    async function refreshBalance() {
+      if (!offpeakProxy || balanceFetching) return;
+      if (Date.now() - balanceFetchedAt < 60_000) return;
+      balanceFetching = true;
+      try {
+        const q = await offpeakProxy.getBalance();
+        if (q && typeof q === 'object' && q.ok === true) {
+          balanceState.result = q.value ?? null;
+          balanceState.error = null;
+        } else {
+          balanceState.error = q?.error?.message ?? '调用失败';
+          // 诊断：把真实错误打到 DevTools Console，角标只显示通用文案。
+          try { console.warn('[dsh-offpeak-alert] 余额 RPC 返回错误：', q?.error); } catch { /* 控制台不可用 */ }
+        }
+      } catch (error) {
+        balanceState.error = String(error?.message ?? error);
+        try { console.warn('[dsh-offpeak-alert] 余额 RPC 调用异常：', error); } catch { /* 控制台不可用 */ }
+      } finally {
+        balanceFetching = false;
+        balanceFetchedAt = Date.now();
+      }
+      if (goScreen === 0) paint();
     }
 
     /** 单击切换：峰谷屏 <-> Go 用量屏。 */
@@ -653,6 +722,7 @@ window.__ModuleLoader__.load({
       //   __dshOffpeak.status()        当前时段、判断依据、规则是否可能过期
       //   __dshOffpeak.nextSwitch()    下一次切换时刻
       //   __dshOffpeak.goUsage()       立即刷新并返回 Go 用量原始结果
+      //   __dshOffpeak.balance()       立即刷新并返回 DeepSeek 余额原始结果
       //   __dshOffpeak.toggleScreen()  手动切换第一/第二屏
       //   __dshOffpeak.showBadge()     手动恢复被关闭的角标
       window.__dshOffpeak = {
@@ -673,6 +743,11 @@ window.__ModuleLoader__.load({
           goFetchedAt = 0; // 强制绕过客户端节流，Host 侧缓存仍在
           await refreshGoUsage();
           return goState.result ?? { error: goState.error ?? '不可用' };
+        },
+        balance: async () => {
+          balanceFetchedAt = 0; // 强制绕过客户端节流，Host 侧缓存仍在
+          await refreshBalance();
+          return balanceState.result ?? { error: balanceState.error ?? '不可用' };
         },
         toggleScreen: () => {
           toggleGoScreen();
@@ -812,9 +887,9 @@ window.__ModuleLoader__.load({
 
       ctx.effect(installStyles, 'offpeak-alert: badge stylesheet');
 
-      // Go 用量数据通道：挂载 Host 半的 offpeak.getGoUsage() RPC。
-      // 失败/不可用（浏览器版、老宿主）时 goProxy 保持 null，
-      // 第二屏显示中性提示，第一屏峰谷功能完全不受影响。
+      // 用量/余额数据通道：挂载 Host 半的 offpeak.getGoUsage() / getBalance() RPC。
+      // 失败/不可用（浏览器版、老宿主）时 offpeakProxy 保持 null，
+      // 第二屏显示中性提示、第一屏不显示余额段，峰谷功能完全不受影响。
       ctx.effect(() => {
         let dispose = null;
         let cancelled = false;
@@ -824,19 +899,21 @@ window.__ModuleLoader__.load({
             if (!remote || typeof remote.$mount !== 'function') return;
             dispose = await remote.$mount({
               package: PLUGIN_ID,
-              descriptors: [GO_DESCRIPTOR],
+              descriptors: [GO_DESCRIPTOR, BALANCE_DESCRIPTOR],
             });
             if (cancelled) {
               try { dispose(); } catch { /* 卸载竞态：已取消即可 */ }
               dispose = null;
               return;
             }
-            goProxy = ctx.get('remote.offpeak') ?? null;
-            if (goScreen === 1) refreshGoUsage();
+            offpeakProxy = ctx.get('remote.offpeak') ?? null;
+            // 挂载成功即各拉一次，让两屏数据都提前就位（Host 侧有缓存）
+            refreshGoUsage();
+            refreshBalance();
           } catch (error) {
-            goProxy = null; // 挂载失败：照常单屏
+            offpeakProxy = null; // 挂载失败：照常单屏
             // 诊断：挂载失败的原因打到 DevTools Console（形状不对/宿主过旧等）。
-            try { console.warn('[dsh-offpeak-alert] Go 用量 RPC 挂载失败：', error); } catch { /* 控制台不可用 */ }
+            try { console.warn('[dsh-offpeak-alert] 用量/余额 RPC 挂载失败：', error); } catch { /* 控制台不可用 */ }
           }
         })();
         return () => {
@@ -844,9 +921,9 @@ window.__ModuleLoader__.load({
           if (dispose) {
             try { dispose(); } catch { /* 已释放时忽略 */ }
           }
-          goProxy = null;
+          offpeakProxy = null;
         };
-      }, 'offpeak-alert: Go 用量 remote 挂载');
+      }, 'offpeak-alert: 用量/余额 remote 挂载');
 
       ctx.effect(() => {
         paint();

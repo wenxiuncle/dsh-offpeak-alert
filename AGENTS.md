@@ -18,9 +18,9 @@ DeepSeek Harness **桌面版**插件：在应用窗口标题栏常驻一个角�
 
 | 文件 | 说明 |
 |---|---|
-| `client.js` | 浏览器端全部逻辑：峰谷判定、节假日表、`BADGE_CSS`、拖动/关闭、双屏切换 |
-| `index.js` | Host 侧：`offpeak` 服务 —— 解析 OpenCode Go Key 并请求用量接口（缓存 5 分钟）。仍只导出 `apply` |
-| `typert.host.js` | 宿主侧 typert 方法表（`offpeak.getGoUsage`），把 `index.js` 的服务暴露给浏览器端；格式必须过 dsh-typert-loader 的严格校验 |
+| `client.js` | 浏览器端全部逻辑：峰谷判定、节假日表、`BADGE_CSS`、拖动/关闭、双屏切换、余额片段 |
+| `index.js` | Host 侧：`offpeak` 服务 —— 解析 OpenCode Go / DeepSeek Key 并请求 Go 用量、DeepSeek 余额接口（缓存 5 分钟）。仍只导出 `apply` |
+| `typert.host.js` | 宿主侧 typert 方法表（`offpeak.getGoUsage`、`offpeak.getBalance`），把 `index.js` 的服务暴露给浏览器端；格式必须过 dsh-typert-loader 的严格校验 |
 | `icon.svg` | 插件卡片图标（DSH 读 `package.json.icon`） |
 | `assets/` | README 用的图：`screenshot-*.png` 是桌面版实拍；`screenshot-states.png` **不是实拍**，是按 `BADGE_CSS` 真实尺寸栅格化的四种状态配色对照，改配色后要一起更新 |
 | `cordis.patch.yml` | 往 profile 插入插件行 |
@@ -39,8 +39,9 @@ DeepSeek Harness **桌面版**插件：在应用窗口标题栏常驻一个角�
    特异性是 0,2,1，**高于**通用的高峰规则 `[data-dsh-offpeak-badge][data-state="peak"]` 的 0,2,0 ——
    所以高峰规则必须同时写两个选择器（通用 + 带 `body[data-ds-dark-theme]` 的那条），少一条深色主题就不变色。
 4. **峰谷规则硬编码、不联网。** 「规则待核」小黄点、`SCHEDULE_VERIFIED_ON`、`SCHEDULE_MAX_AGE_DAYS` 是**特性不是 bug**：它们负责提醒规则可能过期。核对官网后要顺手把核对日期改成当天。
-5. **角标双屏：第一屏永远默认显示峰谷。** 单击（按下不动再松开）切到第二屏显示 OpenCode Go 用量（`Go 5小时 62% · 周 31% · 月 44%`），再单击回峰谷屏；切换状态只记在内存，每次重载回第一屏。光标保持普通箭头，**不要改成 pointer/小手**。$mount 失败或宿主没有 remote 通道时**角标照常单屏**，不得因此破坏峰谷主功能。
-6. **Go 用量的网络请求只放 Host 侧**（`index.js` → `typert.host.js` → client 经 remote 代理调用）。Key 只在宿主流转，浏览器端不拿 Key、不发请求；请求必须带浏览器 UA（否则 opencode.ai 前置 Cloudflare 拦截 error 1010）。Key 自动发现顺序：DSH 凭据库 `OPENCODE_GO_API_KEY` → DSH 模型设置中 `llm-pi-ai` 的官方 OpenCode Go 路由 `apiKeyEnv` 凭据引用 → 同名 env → `OPENCODE_API_KEY`（凭据库 → env）→ `~/.local/share/opencode/auth.json`（XDG 变体兜底，`OPENCODE_AUTH_CONTENT` 优先覆盖）。`credentials.resolve()` 返回 `{ value, source }`，消费 `value` 字段；所有凭据调用必须 try/catch，旧宿主没有 credentials 服务时要能降级。**每个通过 `ctx.provide()` 暴露给 Typert gateway 的 Host 服务对象，还必须有不可枚举的 `typertRemote: { service, serviceKey, namespace }` 自指绑定**（`service` 是对象本身，后两项要与 `typert.host.js` descriptor 对齐）；否则 RPC descriptor 虽能解析，调用时仍会报「no visible typertRemote binding」。
+5. **角标双屏：第一屏永远默认显示峰谷。** 单击（按下不动再松开）切到第二屏显示 OpenCode Go 用量（`Go 5小时 62% · 周 31% · 月 44%`），再单击回峰谷屏；切换状态只记在内存，每次重载回第一屏。光标保持普通箭头，**不要改成 pointer/小手**。$mount 失败或宿主没有 remote 通道时**角标照常单屏**，不得因此破坏峰谷主功能。第一屏文案在倒计时片段**之后**追加 DeepSeek 余额片段（`· ￥x.xx`，`balanceText()`）；余额查不到就**整段不显示**，不要占位（如「余额待查」），也不要因此挤掉倒计时。
+6. **Go 用量与 DeepSeek 余额的网络请求只放 Host 侧**（`index.js` → `typert.host.js` → client 经 remote 代理调用）。Key 只在宿主流转，浏览器端不拿 Key、不发请求；请求必须带浏览器 UA（否则 opencode.ai 前置 Cloudflare 拦截 error 1010）。Key 自动发现顺序：DSH 凭据库 `OPENCODE_GO_API_KEY` → DSH 模型设置中 `llm-pi-ai` 的官方 OpenCode Go 路由 `apiKeyEnv` 凭据引用 → 同名 env → `OPENCODE_API_KEY`（凭据库 → env）→ `~/.local/share/opencode/auth.json`（XDG 变体兜底，`OPENCODE_AUTH_CONTENT` 优先覆盖）。`credentials.resolve()` 返回 `{ value, source }`，消费 `value` 字段；所有凭据调用必须 try/catch，旧宿主没有 credentials 服务时要能降级。**每个通过 `ctx.provide()` 暴露给 Typert gateway 的 Host 服务对象，还必须有不可枚举的 `typertRemote: { service, serviceKey, namespace }` 自指绑定**（`service` 是对象本身，后两项要与 `typert.host.js` descriptor 对齐）；否则 RPC descriptor 虽能解析，调用时仍会报「no visible typertRemote binding」。
+   - DeepSeek 余额（`offpeak.getBalance`）同理只在 Host 侧发 `GET https://api.deepseek.com/user/balance`。Key 发现顺序：DSH 凭据库 `DEEPSEEK_API_KEY` → 模型设置 `llm-pi-ai` 里 **baseURL 为官方 `https://api.deepseek.com`** 的路由 `apiKeyEnv`（**不认中转站 baseURL**，防止拿中转站 Key 查官方余额查出 401）→ 同名 env。余额取 `total_balance`（含赠金与充值），多币种优先 CNY，USD 用 `$` 其余用 `￥`；查不到/失败整段不占位（决定 5）。
 7. **定位是面向桌面版的。** `applyDefaultPosition()` 只把角标放在**视口顶边居中**，并不探测标题栏元素；桌面版把窗口标题栏画在文档内，所以落点正好。**不要写成「浏览器版不显示」** —— 它会显示，只是贴在页面最顶端，没做适配与验证。
 8. `index.js` **只导出 `apply`**，不要导出 `Config` 或 `name`（见文件内注释：导出普通对象会让行校验失败、插件状态变「异常」）。
 
@@ -59,6 +60,6 @@ DeepSeek Harness **桌面版**插件：在应用窗口标题栏常驻一个角�
 | 峰谷时段规则 | `client.js` 的 `statusAt()` 分钟判断 + `SCHEDULE_VERIFIED_ON` |
 | 中国法定节假日 | `client.js` 顶部 `OFFICIAL_HOLIDAYS`（未内置年份走 `LUNAR_FALLBACK` 农历估算） |
 | 角标配色 / 拖动 / 关闭 / 单击切屏 | `client.js` 的 `BADGE_CSS`、`finishDrag()`（单击判定）与 `goUsageText()`/`toggleGoScreen()` |
-| Go 用量显示 / Key 来源 | `index.js`（服务 + Key 解析）、`typert.host.js`（方法表，改方法名要同步 client 的 `$mount` descriptors） |
+| Go 用量 / DeepSeek 余额显示 / Key 来源 | `index.js`（服务 + Key 解析）、`typert.host.js`（方法表 `getGoUsage`/`getBalance`，改方法名要同步 client 的 `$mount` descriptors） |
 | 插件图标 | `icon.svg`（渲染验证后提交） |
 | 插件面板里的名称与简介 | `package.json` 的 `meta.title` / `meta.description` |

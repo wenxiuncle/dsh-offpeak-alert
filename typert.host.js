@@ -40,6 +40,20 @@ export const goUsageSchema = z.object({
   }),
 })
 
+/**
+ * getBalance 的返回值。status 语义与 goUsageSchema 一致：
+ * 'ok' 拿到了余额（balance 为 total_balance 字符串，currency 为 'CNY'/'USD'），
+ * 'off' 没配 DeepSeek API Key 等中性状态，'error' 真故障。
+ */
+const balanceSchema = z.object({
+  status: z.enum(['off', 'ok', 'error']),
+  message: z.string(),
+  detail: z.string().optional(),
+  fetchedAt: z.number(),
+  currency: z.string(),
+  balance: z.string(),
+})
+
 const strictCodec = (name, schema) => ({
   mode: 'strict',
   typeSymbol: 'dsh-offpeak-alert#' + name,
@@ -48,6 +62,7 @@ const strictCodec = (name, schema) => ({
 })
 
 const _goUsageCodec = strictCodec('GoUsage', goUsageSchema)
+const _balanceCodec = strictCodec('Balance', balanceSchema)
 
 export const TYPERT = {
   package: 'dsh-offpeak-alert',
@@ -63,6 +78,15 @@ export const TYPERT = {
       invocation: { kind: 'direct' },
       parameters: [],
       result: _goUsageCodec,
+    },
+    {
+      id: 'dsh-offpeak-alert#offpeak/getBalance',
+      service: 'offpeak',
+      namespace: 'offpeak',
+      method: 'getBalance',
+      invocation: { kind: 'direct' },
+      parameters: [],
+      result: _balanceCodec,
     },
   ],
 }
